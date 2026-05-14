@@ -1,14 +1,12 @@
 from fastapi import FastAPI
-from fastapi.security import HTTPBearer
 from app.db import SUPABASE_URL
-from app.routers import auth, trades
-
-security = HTTPBearer()
+from app.routers import auth, trades, principles
 
 app = FastAPI(title="Trady API")
 
 app.include_router(auth.router)
 app.include_router(trades.router)
+app.include_router(principles.router)
 
 @app.get("/")
 def root():
