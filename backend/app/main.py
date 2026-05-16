@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import SUPABASE_URL
-from app.routers import auth, trades, principles
+from app.routers import auth, trades, principles, stats
 
 app = FastAPI(title="Trady API")
 
@@ -16,6 +16,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(trades.router)
 app.include_router(principles.router)
+app.include_router(stats.router)
+
 
 @app.get("/")
 def root():
