@@ -95,6 +95,12 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-gray-900">📒 Trady</h1>
           <div className="flex gap-3">
             <button
+              onClick={() => router.push('/dashboard/reports')}
+              className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200"
+              >
+                🤖 AI 리포트
+            </button>
+            <button
               onClick={() => router.push('/dashboard/principles')}
               className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200"
               >
