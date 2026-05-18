@@ -6,49 +6,42 @@ import { useAuthStore } from '@/store/auth'
 import api from '@/lib/api'
 
 interface Indicator {
-  indicator_type: string
   label: string
   value: number
-  raw_json: {
-    value: number
-    prev_value: number
-    date: string
-    change: number
-  }
+  raw_json: { value: number; prev_value: number; date: string; change: number }
   recorded_at: string
-}
-
-interface Indicators {
-  yield_spread?: Indicator
-  fed_funds?: Indicator
-  credit_spread?: Indicator
 }
 
 function getSignal(type: string, value: number) {
   if (type === 'yield_spread') {
-    if (value < 0) return { color: 'text-red-500', bg: 'bg-red-50', label: '⚠️ 역전 — 침체 경고', desc: '장기금리 < 단기금리. 역사적으로 경기침체 선행 신호.' }
-    if (value < 0.5) return { color: 'text-yellow-500', bg: 'bg-yellow-50', label: '🟡 주의 — 평탄화', desc: '금리차가 좁아지는 중. 경기 둔화 가능성.' }
-    return { color: 'text-green-500', bg: 'bg-green-50', label: '✅ 정상 — 경기 낙관', desc: '장기금리 > 단기금리. 정상적인 경기 상태.' }
+    if (value < 0) return { label: 'Inverted', color: '#c94444', bg: '#fdf0f0' }
+    if (value < 0.5) return { label: 'Flattening', color: '#9a6a10', bg: '#fef3e2' }
+    return { label: 'Normal', color: '#2d7a4f', bg: '#e8f5ee' }
   }
   if (type === 'fed_funds') {
-    if (value >= 5) return { color: 'text-red-500', bg: 'bg-red-50', label: '🔴 고금리 — 긴축', desc: '높은 금리. 성장주/기술주에 불리.' }
-    if (value >= 3) return { color: 'text-yellow-500', bg: 'bg-yellow-50', label: '🟡 중립 — 관망', desc: '중립 금리 구간. 방향성 주시 필요.' }
-    return { color: 'text-green-500', bg: 'bg-green-50', label: '✅ 저금리 — 완화', desc: '낮은 금리. 위험자산 선호 환경.' }
+    if (value >= 5) return { label: 'Restrictive', color: '#c94444', bg: '#fdf0f0' }
+    if (value >= 3) return { label: 'Neutral', color: '#9a6a10', bg: '#fef3e2' }
+    return { label: 'Accommodative', color: '#2d7a4f', bg: '#e8f5ee' }
   }
   if (type === 'credit_spread') {
-    if (value >= 6) return { color: 'text-red-500', bg: 'bg-red-50', label: '🔴 위험 — 신용경색', desc: '스프레드 급등. 시장 공포, 신규 매수 자제.' }
-    if (value >= 4) return { color: 'text-yellow-500', bg: 'bg-yellow-50', label: '🟡 주의 — 경계', desc: '스프레드 확대 중. 리스크 관리 강화.' }
-    return { color: 'text-green-500', bg: 'bg-green-50', label: '✅ 안정 — 리스크 선호', desc: '스프레드 낮음. 시장 낙관.' }
+    if (value >= 6) return { label: 'Distressed', color: '#c94444', bg: '#fdf0f0' }
+    if (value >= 4) return { label: 'Elevated', color: '#9a6a10', bg: '#fef3e2' }
+    return { label: 'Tight', color: '#2d7a4f', bg: '#e8f5ee' }
   }
-  return { color: 'text-gray-500', bg: 'bg-gray-50', label: '-', desc: '' }
+  return { label: '-', color: '#94a3b8', bg: '#f0f2f5' }
+}
+
+const descriptions: Record<string, string> = {
+  yield_spread: '10Y − 2Y Treasury spread. Negative = recession warning.',
+  fed_funds: 'Federal Reserve benchmark rate. Higher = tighter financial conditions.',
+  credit_spread: 'HY bond spread over Treasuries. Rising = credit stress increasing.',
 }
 
 export default function MarketPage() {
   const { token } = useAuthStore()
   const router = useRouter()
-  const [indicators, setIndicators] = useState<Indicators>({})
+  const [indicators, setIndicators] = useState<Record<string, Indicator>>({})
   const [refreshing, setRefreshing] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
 
   useEffect(() => {
     if (!token) { router.push('/login'); return }
@@ -58,8 +51,6 @@ export default function MarketPage() {
   const fetchIndicators = async () => {
     const res = await api.get('/market/indicators')
     setIndicators(res.data)
-    const dates = Object.values(res.data as Indicators).map(i => i?.recorded_at).filter(Boolean)
-    if (dates.length > 0) setLastUpdated(dates[0] as string)
   }
 
   const handleRefresh = async () => {
@@ -67,79 +58,74 @@ export default function MarketPage() {
     try {
       await api.post('/market/refresh')
       await fetchIndicators()
-    } catch {
-      alert('업데이트 실패')
-    } finally {
-      setRefreshing(false)
-    }
+    } catch { alert('Update failed') }
+    finally { setRefreshing(false) }
   }
 
-  const indicatorList = [
-    { key: 'yield_spread', unit: '%' },
-    { key: 'fed_funds', unit: '%' },
-    { key: 'credit_spread', unit: '%' },
-  ]
+  const indicatorKeys = ['yield_spread', 'fed_funds', 'credit_spread']
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-
-        {/* 헤더 */}
-        <div className="flex justify-between items-center mb-2">
-          <h1 className="text-xl font-bold text-gray-900">🌍 마켓 대시보드</h1>
-          <button onClick={handleRefresh} disabled={refreshing}
-            className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 disabled:opacity-50">
-            {refreshing ? '업데이트 중...' : '🔄 새로고침'}
-          </button>
+    <div style={{ minHeight: '100vh', background: '#f0f2f5', padding: '28px 32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div>
+          <div style={{ fontSize: '20px', fontWeight: 500, color: '#1c2333', letterSpacing: '-0.02em' }}>Market Signals</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Key macro indicators for informed trading</div>
         </div>
-        {lastUpdated && (
-          <p className="text-xs text-gray-400 mb-8">
-            마지막 업데이트: {new Date(lastUpdated).toLocaleString('ko-KR')}
-          </p>
-        )}
+        <button onClick={handleRefresh} disabled={refreshing}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 18px', borderRadius: '8px',
+            border: '0.5px solid #e2e8f0', background: '#fff',
+            color: '#94a3b8', fontSize: '13px', cursor: 'pointer'
+          }}>
+          <i className={`ti ti-refresh ${refreshing ? 'animate-spin' : ''}`} style={{ fontSize: '14px' }} aria-hidden="true"></i>
+          {refreshing ? 'Updating...' : 'Refresh'}
+        </button>
+      </div>
 
-        {/* 지표 카드 */}
-        <div className="flex flex-col gap-4">
-          {indicatorList.map(({ key, unit }) => {
-            const ind = indicators[key as keyof Indicators]
-            if (!ind) return (
-              <div key={key} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                <p className="text-gray-300 text-sm">데이터 없음 — 새로고침을 눌러주세요</p>
-              </div>
-            )
-            const signal = getSignal(key, ind.value)
-            const change = ind.raw_json?.change ?? 0
-            return (
-              <div key={key} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <p className="text-sm text-gray-400 mb-1">{ind.label}</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-gray-900">{ind.value}{unit}</span>
-                      <span className={`text-sm font-medium ${change > 0 ? 'text-red-400' : change < 0 ? 'text-blue-400' : 'text-gray-400'}`}>
-                        {change > 0 ? '+' : ''}{change.toFixed(4)}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-300 mt-1">기준일: {ind.raw_json?.date}</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+        {indicatorKeys.map(key => {
+          const ind = indicators[key]
+          if (!ind) return (
+            <div key={key} style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '0.5px solid #e2e8f0' }}>
+              <div style={{ fontSize: '13px', color: '#c0cad8' }}>No data — click Refresh to load</div>
+            </div>
+          )
+          const signal = getSignal(key, ind.value)
+          const change = ind.raw_json?.change ?? 0
+          return (
+            <div key={key} style={{ background: '#fff', borderRadius: '12px', padding: '20px 24px', border: '0.5px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>{ind.label}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                    <span style={{ fontSize: '32px', fontWeight: 500, color: '#1c2333', letterSpacing: '-0.02em' }}>{ind.value}%</span>
+                    <span style={{ fontSize: '13px', color: change > 0 ? '#c94444' : change < 0 ? '#2d7a4f' : '#94a3b8' }}>
+                      {change > 0 ? '+' : ''}{change.toFixed(4)}
+                    </span>
                   </div>
-                  <span className={`text-xs px-3 py-1.5 rounded-xl font-medium ${signal.bg} ${signal.color}`}>
-                    {signal.label}
-                  </span>
+                  <div style={{ fontSize: '11px', color: '#c0cad8', marginTop: '4px' }}>As of {ind.raw_json?.date}</div>
                 </div>
-                <div className={`rounded-xl px-4 py-3 ${signal.bg}`}>
-                  <p className={`text-sm ${signal.color}`}>{signal.desc}</p>
-                </div>
+                <span style={{
+                  fontSize: '11px', fontWeight: 500, padding: '4px 12px', borderRadius: '6px',
+                  background: signal.bg, color: signal.color
+                }}>
+                  {signal.label}
+                </span>
               </div>
-            )
-          })}
-        </div>
+              <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '0.5px solid #f0f2f5', fontSize: '12px', color: '#94a3b8' }}>
+                {descriptions[key]}
+              </div>
+            </div>
+          )
+        })}
+      </div>
 
-        {/* 안내 */}
-        <div className="mt-6 bg-blue-50 rounded-2xl p-4">
-          <p className="text-xs text-blue-500 font-medium mb-1">📌 활용 팁</p>
-          <p className="text-xs text-blue-400 leading-relaxed">
-            매매일지 작성 전 이 지표들을 확인하세요. 크레딧 스프레드 급등 또는 장단기 금리차 역전 시에는 신규 매수를 자제하고 포지션을 점검하는 것이 좋습니다.
-          </p>
+      {/* 안내 박스 */}
+      <div style={{ background: '#1c2333', borderRadius: '12px', padding: '18px 24px' }}>
+        <div style={{ fontSize: '11px', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Trading Tip</div>
+        <div style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.7 }}>
+          Check these signals before entering a new position. When credit spreads are rising or the yield curve is inverted, consider reducing position size and tightening stop losses.
         </div>
       </div>
     </div>
