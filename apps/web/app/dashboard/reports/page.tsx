@@ -35,82 +35,96 @@ export default function ReportsPage() {
   const handleGenerate = async (type: 'weekly' | 'monthly') => {
     setLoading(true)
     try {
-      const res = await api.post('/reports/generate', { type })
+      await api.post('/reports/generate', { type })
       await fetchReports()
-      setSelected({ ...res.data, type, created_at: new Date().toISOString() })
-    } catch {
-      alert('리포트 생성 실패')
-    } finally {
-      setLoading(false)
-    }
+    } catch { alert('Failed to generate report') }
+    finally { setLoading(false) }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-
-        {/* 헤더 */}
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-gray-900">🤖 AI 피드백 리포트</h1>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => handleGenerate('weekly')} disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-              {loading ? '생성중...' : '주간 리포트'}
-            </button>
-            <button onClick={() => handleGenerate('monthly')} disabled={loading}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
-              {loading ? '생성중...' : '월간 리포트'}
-            </button>
-          </div>
+    <div style={{ minHeight: '100vh', background: '#f0f2f5', padding: '28px 32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div>
+          <div style={{ fontSize: '20px', fontWeight: 500, color: '#1c2333', letterSpacing: '-0.02em' }}>AI Reports</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Personalized feedback on your trading habits</div>
         </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => handleGenerate('weekly')} disabled={loading}
+            style={{
+              padding: '10px 18px', borderRadius: '8px', border: 'none',
+              background: '#1c2333', color: '#e8eaf0', fontSize: '13px',
+              fontWeight: 500, cursor: 'pointer', opacity: loading ? 0.6 : 1
+            }}>
+            {loading ? 'Generating...' : 'Weekly Report'}
+          </button>
+          <button onClick={() => handleGenerate('monthly')} disabled={loading}
+            style={{
+              padding: '10px 18px', borderRadius: '8px',
+              border: '0.5px solid #e2e8f0', background: '#fff',
+              color: '#1c2333', fontSize: '13px', fontWeight: 500,
+              cursor: 'pointer', opacity: loading ? 0.6 : 1
+            }}>
+            Monthly Report
+          </button>
+        </div>
+      </div>
 
-        {reports.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-4xl mb-3">🤖</p>
-            <p className="text-sm mb-2">아직 리포트가 없어요.</p>
-            <p className="text-sm">매매일지를 작성한 후 리포트를 생성해보세요!</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-            {/* 리포트 목록 */}
-            <div className="flex flex-col gap-2">
-              {reports.map(r => (
-                <div key={r.id} onClick={() => setSelected(r)}
-                  className={`p-4 rounded-xl cursor-pointer border transition-all ${selected?.id === r.id ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100 hover:border-gray-200'}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${r.type === 'weekly' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}`}>
-                      {r.type === 'weekly' ? '주간' : '월간'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    {new Date(r.created_at).toLocaleDateString('ko-KR')}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* 리포트 내용 */}
-            {selected && (
-              <div className="md:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className={`text-xs px-2 py-1 rounded-md font-medium ${selected.type === 'weekly' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}`}>
-                    {selected.type === 'weekly' ? '주간 리포트' : '월간 리포트'}
+      {reports.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '80px', background: '#fff', borderRadius: '14px', border: '0.5px solid #e2e8f0' }}>
+          <i className="ti ti-sparkles" style={{ fontSize: '32px', color: '#c0cad8', display: 'block', marginBottom: '12px' }} aria-hidden="true"></i>
+          <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>No reports yet</div>
+          <div style={{ fontSize: '12px', color: '#c0cad8' }}>Add some trades and generate your first report</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {reports.map(r => (
+              <div key={r.id} onClick={() => setSelected(r)}
+                style={{
+                  padding: '14px 16px', borderRadius: '10px', cursor: 'pointer',
+                  border: '0.5px solid',
+                  borderColor: selected?.id === r.id ? '#94a3b8' : '#e2e8f0',
+                  background: selected?.id === r.id ? '#fff' : '#fafafa',
+                  transition: 'all 0.15s'
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                  <span style={{
+                    fontSize: '10px', fontWeight: 500, padding: '2px 8px', borderRadius: '4px',
+                    background: r.type === 'weekly' ? '#1c2333' : '#f0f2f5',
+                    color: r.type === 'weekly' ? '#e8eaf0' : '#94a3b8',
+                    textTransform: 'uppercase', letterSpacing: '0.04em'
+                  }}>
+                    {r.type}
                   </span>
-                  <span className="text-xs text-gray-400">
-                    {new Date(selected.period_start).toLocaleDateString('ko-KR')} ~ {new Date(selected.period_end).toLocaleDateString('ko-KR')}
-                  </span>
                 </div>
-                <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed whitespace-pre-wrap text-sm">
-                  {selected.content}
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                  {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
-            )}
+            ))}
           </div>
-        )}
-      </div>
+
+          {selected && (
+            <div style={{ background: '#fff', borderRadius: '12px', padding: '28px', border: '0.5px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '0.5px solid #f0f2f5' }}>
+                <span style={{
+                  fontSize: '10px', fontWeight: 500, padding: '3px 10px', borderRadius: '4px',
+                  background: '#1c2333', color: '#e8eaf0',
+                  textTransform: 'uppercase', letterSpacing: '0.04em'
+                }}>
+                  {selected.type}
+                </span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                  {new Date(selected.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} — {new Date(selected.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+              </div>
+              <div style={{ fontSize: '14px', color: '#1c2333', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                {selected.content}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

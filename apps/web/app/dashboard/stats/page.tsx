@@ -16,8 +16,8 @@ interface Summary {
 }
 
 const emotionLabels: Record<string, string> = {
-  confident: '확신', anxious: '불안', fomo: 'FOMO',
-  analysis: '분석기반', recommended: '추천매매', 미기록: '미기록'
+  confident: 'Confident', anxious: 'Anxious', fomo: 'FOMO',
+  analysis: 'Analysis', recommended: 'Recommended', 미기록: 'Untagged'
 }
 
 export default function StatsPage() {
@@ -31,87 +31,90 @@ export default function StatsPage() {
   }, [token])
 
   if (!summary) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-gray-400 text-sm">불러오는 중...</p>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <div style={{ fontSize: '13px', color: '#94a3b8' }}>Loading...</div>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
+    <div style={{ minHeight: '100vh', background: '#f0f2f5', padding: '28px 32px' }}>
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ fontSize: '20px', fontWeight: 500, color: '#1c2333', letterSpacing: '-0.02em' }}>Statistics</div>
+        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Your trading performance overview</div>
+      </div>
 
-        {/* 헤더 */}
-        <h1 className="text-xl font-bold text-gray-900 mb-8">📊 매매 통계</h1>
-
-        {/* 핵심 지표 카드 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          {[
-            { label: '총 거래', value: `${summary.total_trades}건` },
-            { label: '매수', value: `${summary.buy_count}건`, color: 'text-red-500' },
-            { label: '매도', value: `${summary.sell_count}건`, color: 'text-blue-500' },
-            { label: '승률', value: `${summary.win_rate}%`, color: summary.win_rate >= 50 ? 'text-green-500' : 'text-red-500' },
-          ].map((item, i) => (
-            <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">{item.label}</p>
-              <p className={`text-2xl font-bold ${item.color || 'text-gray-900'}`}>{item.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* 총 거래 금액 */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
-          <p className="text-xs text-gray-400 mb-1">총 거래 금액</p>
-          <p className="text-3xl font-bold text-gray-900">{summary.total_amount.toLocaleString()}원</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 감정 태그 분포 */}
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <h2 className="text-sm font-bold text-gray-700 mb-4">감정 태그별 거래</h2>
-            {Object.entries(summary.emotion_stats).length === 0 ? (
-              <p className="text-gray-300 text-sm">데이터 없음</p>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {Object.entries(summary.emotion_stats)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([tag, count]) => {
-                    const total = Object.values(summary.emotion_stats).reduce((a, b) => a + b, 0)
-                    const pct = Math.round(count / total * 100)
-                    return (
-                      <div key={tag}>
-                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                          <span>{emotionLabels[tag] || tag}</span>
-                          <span>{count}건 ({pct}%)</span>
-                        </div>
-                        <div className="h-2 bg-gray-100 rounded-full">
-                          <div className="h-2 bg-blue-400 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    )
-                  })}
-              </div>
-            )}
+      {/* 핵심 지표 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        {[
+          { label: 'Total Trades', value: summary.total_trades, unit: '' },
+          { label: 'Buy', value: summary.buy_count, unit: '', color: '#2d7a4f' },
+          { label: 'Sell', value: summary.sell_count, unit: '', color: '#c94444' },
+          { label: 'Win Rate', value: summary.win_rate, unit: '%', color: summary.win_rate >= 50 ? '#2d7a4f' : '#c94444' },
+        ].map(item => (
+          <div key={item.label} style={{ background: '#fff', borderRadius: '12px', padding: '18px', border: '0.5px solid #e2e8f0' }}>
+            <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>{item.label}</div>
+            <div style={{ fontSize: '28px', fontWeight: 500, color: item.color || '#1c2333' }}>{item.value}{item.unit}</div>
           </div>
+        ))}
+      </div>
 
-          {/* 종목별 거래 */}
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <h2 className="text-sm font-bold text-gray-700 mb-4">종목별 거래 횟수</h2>
-            {Object.entries(summary.ticker_stats).length === 0 ? (
-              <p className="text-gray-300 text-sm">데이터 없음</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {Object.entries(summary.ticker_stats)
-                  .sort((a, b) => b[1] - a[1])
-                  .slice(0, 8)
-                  .map(([ticker, count]) => (
-                    <div key={ticker} className="flex justify-between items-center py-2 border-b border-gray-50">
-                      <span className="font-bold text-gray-900 text-sm">{ticker}</span>
-                      <span className="text-xs text-gray-400">{count}건</span>
+      {/* 총 거래 금액 */}
+      <div style={{ background: '#1c2333', borderRadius: '12px', padding: '20px 24px', marginBottom: '20px' }}>
+        <div style={{ fontSize: '11px', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Total Volume</div>
+        <div style={{ fontSize: '32px', fontWeight: 500, color: '#e8eaf0', letterSpacing: '-0.02em' }}>
+          {summary.total_amount.toLocaleString()}<span style={{ fontSize: '16px', color: '#4a5568', marginLeft: '6px' }}>KRW</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        {/* 감정 태그 */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '0.5px solid #e2e8f0' }}>
+          <div style={{ fontSize: '13px', fontWeight: 500, color: '#1c2333', marginBottom: '16px' }}>Emotion Breakdown</div>
+          {Object.entries(summary.emotion_stats).length === 0 ? (
+            <div style={{ fontSize: '13px', color: '#c0cad8' }}>No data yet</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {Object.entries(summary.emotion_stats).sort((a, b) => b[1] - a[1]).map(([tag, count]) => {
+                const total = Object.values(summary.emotion_stats).reduce((a, b) => a + b, 0)
+                const pct = Math.round(count / total * 100)
+                const isFomo = tag === 'fomo'
+                return (
+                  <div key={tag}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                      <span style={{ fontSize: '12px', color: isFomo ? '#c94444' : '#94a3b8' }}>{emotionLabels[tag] || tag}</span>
+                      <span style={{ fontSize: '12px', color: '#94a3b8' }}>{count} · {pct}%</span>
                     </div>
-                  ))}
-              </div>
-            )}
-          </div>
+                    <div style={{ height: '4px', background: '#f0f2f5', borderRadius: '99px' }}>
+                      <div style={{ height: '4px', borderRadius: '99px', width: `${pct}%`, background: isFomo ? '#c94444' : '#1c2333' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 종목별 */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '0.5px solid #e2e8f0' }}>
+          <div style={{ fontSize: '13px', fontWeight: 500, color: '#1c2333', marginBottom: '16px' }}>Top Tickers</div>
+          {Object.entries(summary.ticker_stats).length === 0 ? (
+            <div style={{ fontSize: '13px', color: '#c0cad8' }}>No data yet</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {Object.entries(summary.ticker_stats).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([ticker, count], i) => (
+                <div key={ticker} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '10px 0', borderBottom: '0.5px solid #f0f2f5'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '11px', color: '#c0cad8', width: '16px' }}>{i + 1}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#1c2333' }}>{ticker}</span>
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>{count} trades</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
