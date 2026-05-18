@@ -52,9 +52,6 @@ export default function ReportsPage() {
         {/* 헤더 */}
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/dashboard')}
-              className="text-gray-400 hover:text-gray-600 text-sm">← 대시보드</button>
-            <span className="text-gray-300">|</span>
             <h1 className="text-xl font-bold text-gray-900">🤖 AI 피드백 리포트</h1>
           </div>
           <div className="flex gap-2">
