@@ -41,12 +41,7 @@ export default function StatsPage() {
       <div className="max-w-4xl mx-auto px-4 py-8">
 
         {/* 헤더 */}
-        <div className="flex items-center gap-3 mb-8">
-          <button onClick={() => router.push('/dashboard')}
-            className="text-gray-400 hover:text-gray-600 text-sm">← 대시보드</button>
-          <span className="text-gray-300">|</span>
-          <h1 className="text-xl font-bold text-gray-900">📊 매매 통계</h1>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900 mb-8">📊 매매 통계</h1>
 
         {/* 핵심 지표 카드 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

@@ -101,9 +101,6 @@ export default function PrinciplesPage() {
         {/* 헤더 */}
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/dashboard')}
-              className="text-gray-400 hover:text-gray-600 text-sm">← 대시보드</button>
-            <span className="text-gray-300">|</span>
             <h1 className="text-xl font-bold text-gray-900">📋 나의 투자 원칙</h1>
           </div>
           <button onClick={() => { resetForm(); setShowForm(true) }}
