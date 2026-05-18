@@ -1,13 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import SUPABASE_URL
-from app.routers import auth, trades, principles, stats, reports, market
+from app.routers import auth, trades, principles, stats, reports
 
 app = FastAPI(title="Trady API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://trady-gamma.vercel.app",
+        ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -18,7 +21,6 @@ app.include_router(trades.router)
 app.include_router(principles.router)
 app.include_router(stats.router)
 app.include_router(reports.router)
-app.include_router(market.router)
 
 @app.get("/")
 def root():
