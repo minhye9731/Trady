@@ -8,6 +8,7 @@ const navItems = [
   { href: '/dashboard/principles', label: '투자 원칙', icon: '📋' },
   { href: '/dashboard/stats', label: '통계', icon: '📊' },
   { href: '/dashboard/reports', label: 'AI 리포트', icon: '🤖' },
+  { href: '/dashboard/market', label: '마켓', icon: '🌍' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
