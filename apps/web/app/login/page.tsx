@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
@@ -12,6 +12,20 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '', nickname: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showReset, setShowReset] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetMsg, setResetMsg] = useState('')
+
+
+  useEffect(() => {
+  // 비밀번호 리셋 토큰 감지
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash
+      if (hash.includes('type=recovery')) {
+        router.push('/auth/reset' + hash)
+      }
+    }
+  }, [])
 
   const handleSubmit = async () => {
     setLoading(true)
@@ -33,6 +47,15 @@ export default function LoginPage() {
       setError(e.response?.data?.detail || '오류가 발생했습니다')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleReset = async () => {
+    try {
+      await api.post('/auth/reset-password', { email: resetEmail })
+      setResetMsg('이메일을 확인해주세요!')
+    } catch {
+      setResetMsg('이메일 발송 실패')
     }
   }
 
@@ -164,6 +187,33 @@ export default function LoginPage() {
             }}>
             {loading ? 'Loading...' : isSignup ? 'Create account' : 'Sign in'}
           </button>
+
+            {/* 비밀번호 찾기 — Sign in 탭에서만 표시 */}
+          {!isSignup && (
+            !showReset ? (
+              <button onClick={() => setShowReset(true)}
+                style={{ width: '100%', marginTop: '12px', background: 'none', border: 'none', fontSize: '12px', color: '#94a3b8', cursor: 'pointer' }}>
+                Forgot password?
+              </button>
+            ) : (
+              <div style={{ marginTop: '16px', padding: '16px', background: '#f0f2f5', borderRadius: '10px' }}>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Reset password</div>
+                <input type="email" placeholder="your@email.com" value={resetEmail}
+                  onChange={e => setResetEmail(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '0.5px solid #e2e8f0', fontSize: '13px', outline: 'none', marginBottom: '8px', color: '#1c2333' }} />
+                <button onClick={handleReset}
+                  style={{ width: '100%', padding: '9px', borderRadius: '8px', border: 'none', background: '#1c2333', color: '#fff', fontSize: '13px', cursor: 'pointer' }}>
+                  Send reset email
+                </button>
+                {resetMsg && <div style={{ fontSize: '12px', marginTop: '8px', color: '#2d7a4f' }}>{resetMsg}</div>}
+                <button onClick={() => setShowReset(false)}
+                  style={{ width: '100%', marginTop: '6px', background: 'none', border: 'none', fontSize: '12px', color: '#94a3b8', cursor: 'pointer' }}>
+                  Back to sign in
+                </button>
+              </div>
+            )
+          )}
+
         </div>
       </div>
     </div>

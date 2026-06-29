@@ -9,6 +9,7 @@ const navItems = [
   { href: '/dashboard/stats', label: 'Stats', icon: 'ti-chart-bar' },
   { href: '/dashboard/reports', label: 'AI Report', icon: 'ti-sparkles' },
   { href: '/dashboard/market', label: 'Market', icon: 'ti-trending-up' },
+  { href: '/dashboard/settings', label: 'Settings', icon: 'ti-settings' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
