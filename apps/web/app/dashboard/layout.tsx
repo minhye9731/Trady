@@ -4,11 +4,12 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useAuthStore } from '@/store/auth'
 
 const navItems = [
-  { href: '/dashboard', label: '홈', icon: '🏠' },
-  { href: '/dashboard/principles', label: '투자 원칙', icon: '📋' },
-  { href: '/dashboard/stats', label: '통계', icon: '📊' },
-  { href: '/dashboard/reports', label: 'AI 리포트', icon: '🤖' },
-  { href: '/dashboard/market', label: '마켓', icon: '🌍' },
+  { href: '/dashboard', label: 'Home', icon: 'ti-home' },
+  { href: '/dashboard/principles', label: 'Principles', icon: 'ti-notebook' },
+  { href: '/dashboard/stats', label: 'Stats', icon: 'ti-chart-bar' },
+  { href: '/dashboard/reports', label: 'AI Report', icon: 'ti-sparkles' },
+  { href: '/dashboard/market', label: 'Market', icon: 'ti-trending-up' },
+  { href: '/dashboard/settings', label: 'Settings', icon: 'ti-settings' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -17,39 +18,46 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { logout } = useAuthStore()
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-
-      {/* 사이드바 */}
-      <aside className="w-56 bg-white border-r border-gray-100 flex flex-col fixed h-full">
-        <div className="px-5 py-6 border-b border-gray-100">
-          <h1 className="text-xl font-bold text-gray-900">📒 Trady</h1>
-          <p className="text-xs text-gray-400 mt-1">뇌동매매 없는 투자 습관</p>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f0f2f5' }}>
+      <aside style={{
+        width: '200px', background: '#1c2333', display: 'flex',
+        flexDirection: 'column', position: 'fixed', height: '100vh'
+      }}>
+        <div style={{ padding: '24px 20px 20px', borderBottom: '0.5px solid #2a3347' }}>
+          <div style={{ fontSize: '15px', fontWeight: 500, color: '#e8eaf0', letterSpacing: '0.06em' }}>TRADY</div>
+          <div style={{ fontSize: '11px', color: '#4a5568', marginTop: '3px' }}>Trade Journal</div>
         </div>
 
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
+        <nav style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {navItems.map(item => (
             <button key={item.href} onClick={() => router.push(item.href)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors text-left
-                ${pathname === item.href
-                  ? 'bg-blue-50 text-blue-600 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50'}`}>
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '9px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                fontSize: '13px', textAlign: 'left', transition: 'all 0.15s',
+                background: pathname === item.href ? '#253047' : 'transparent',
+                color: pathname === item.href ? '#94a3c0' : '#4a5568',
+              }}>
+              <i className={`ti ${item.icon}`} style={{ fontSize: '15px' }} aria-hidden="true"></i>
+              {item.label}
             </button>
           ))}
         </nav>
 
-        <div className="px-3 py-4 border-t border-gray-100">
+        <div style={{ padding: '12px 10px', borderTop: '0.5px solid #2a3347' }}>
           <button onClick={() => { logout(); router.push('/login') }}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-colors text-left">
-            <span>🚪</span>
-            <span>로그아웃</span>
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '9px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+              fontSize: '13px', color: '#4a5568', background: 'transparent', textAlign: 'left'
+            }}>
+            <i className="ti ti-logout" style={{ fontSize: '15px' }} aria-hidden="true"></i>
+            Sign out
           </button>
         </div>
       </aside>
 
-      {/* 메인 컨텐츠 */}
-      <main className="flex-1 ml-56">
+      <main style={{ flex: 1, marginLeft: '200px' }}>
         {children}
       </main>
     </div>

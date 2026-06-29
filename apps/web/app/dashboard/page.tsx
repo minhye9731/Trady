@@ -19,34 +19,42 @@ interface Trade {
   traded_at: string
 }
 
+interface Summary {
+  total_trades: number
+  buy_count: number
+  sell_count: number
+  win_rate: number
+  emotion_stats: Record<string, number>
+}
+
+const emotionLabels: Record<string, string> = {
+  confident: 'Confident', anxious: 'Anxious', fomo: 'FOMO',
+  analysis: 'Analysis', recommended: 'Recommended'
+}
+
 export default function DashboardPage() {
   const { token, logout } = useAuthStore()
   const router = useRouter()
   const [trades, setTrades] = useState<Trade[]>([])
+  const [summary, setSummary] = useState<Summary | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
-    ticker: '',
-    name: '',
-    direction: 'buy',
-    quantity: '',
-    price: '',
-    reason: '',
-    emotion_tag: 'analysis',
-    target_price: '',
-    stop_loss: '',
-    checklist_passed: false,
+    ticker: '', name: '', direction: 'buy', quantity: '',
+    price: '', reason: '', emotion_tag: 'analysis',
+    target_price: '', stop_loss: '', checklist_passed: false,
     traded_at: new Date().toISOString().slice(0, 16),
   })
 
   useEffect(() => {
     if (!token) { router.push('/login'); return }
-    fetchTrades()
+    fetchAll()
   }, [token])
 
-  const fetchTrades = async () => {
-    const res = await api.get('/trades/')
-    setTrades(res.data)
+  const fetchAll = async () => {
+    const [t, s] = await Promise.all([api.get('/trades/'), api.get('/stats/summary')])
+    setTrades(t.data)
+    setSummary(s.data)
   }
 
   const handleSubmit = async () => {
@@ -62,148 +70,232 @@ export default function DashboardPage() {
         traded_at: new Date(form.traded_at).toISOString(),
       })
       setShowForm(false)
-      setForm({
-        ticker: '', name: '', direction: 'buy', quantity: '', price: '',
+      setForm({ ticker: '', name: '', direction: 'buy', quantity: '', price: '',
         reason: '', emotion_tag: 'analysis', target_price: '', stop_loss: '',
-        checklist_passed: false, traded_at: new Date().toISOString().slice(0, 16),
-      })
-      fetchTrades()
-    } catch (e) {
-      alert('저장 실패')
-    } finally {
-      setLoading(false)
-    }
+        checklist_passed: false, traded_at: new Date().toISOString().slice(0, 16) })
+      fetchAll()
+    } catch { alert('저장 실패') }
+    finally { setLoading(false) }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('삭제할까요?')) return
     await api.delete(`/trades/${id}`)
-    fetchTrades()
+    fetchAll()
   }
 
-  const emotionLabels: Record<string, string> = {
-    confident: '확신', anxious: '불안', fomo: 'FOMO',
-    analysis: '분석기반', recommended: '추천매매'
-  }
+  const inp = (extra?: any) => ({
+    style: {
+      width: '100%', padding: '9px 12px', borderRadius: '8px',
+      border: '0.5px solid #e2e8f0', fontSize: '13px',
+      outline: 'none', background: '#fafafa', color: '#1c2333', ...extra
+    }
+  })
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
+    <div style={{ minHeight: '100vh', background: '#f0f2f5', padding: '28px 32px' }}>
 
-        {/* 헤더 */}
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">📒 Trady</h1>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-            >
-              + 매매일지 작성
-            </button>
+      {/* 헤더 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div>
+          <div style={{ fontSize: '20px', fontWeight: 500, color: '#1c2333', letterSpacing: '-0.02em' }}>Overview</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </div>
         </div>
+        <button onClick={() => setShowForm(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 18px', borderRadius: '8px', border: 'none',
+            background: '#1c2333', color: '#e8eaf0', fontSize: '13px',
+            fontWeight: 500, cursor: 'pointer'
+          }}>
+          <i className="ti ti-plus" style={{ fontSize: '14px' }} aria-hidden="true"></i>
+          New Trade
+        </button>
+      </div>
 
-        {/* 매매일지 작성 폼 */}
-        {showForm && (
-          <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">새 매매일지</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <input placeholder="티커 (예: AAPL)" value={form.ticker}
-                onChange={e => setForm({...form, ticker: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400" />
-              <input placeholder="종목명 (예: 애플)" value={form.name}
-                onChange={e => setForm({...form, name: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400" />
-              <select value={form.direction} onChange={e => setForm({...form, direction: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400">
-                <option value="buy">매수</option>
-                <option value="sell">매도</option>
-              </select>
-              <select value={form.emotion_tag} onChange={e => setForm({...form, emotion_tag: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400">
-                <option value="analysis">분석기반</option>
-                <option value="confident">확신</option>
-                <option value="anxious">불안</option>
-                <option value="fomo">FOMO</option>
-                <option value="recommended">추천매매</option>
-              </select>
-              <input placeholder="수량" type="number" value={form.quantity}
-                onChange={e => setForm({...form, quantity: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400" />
-              <input placeholder="가격" type="number" value={form.price}
-                onChange={e => setForm({...form, price: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400" />
-              <input placeholder="목표가 (선택)" type="number" value={form.target_price}
-                onChange={e => setForm({...form, target_price: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400" />
-              <input placeholder="손절가 (선택)" type="number" value={form.stop_loss}
-                onChange={e => setForm({...form, stop_loss: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400" />
-              <input type="datetime-local" value={form.traded_at}
-                onChange={e => setForm({...form, traded_at: e.target.value})}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 col-span-2" />
-            </div>
-            <textarea placeholder="매매 이유를 적어주세요 (필수) ⭐" value={form.reason}
-              onChange={e => setForm({...form, reason: e.target.value})}
-              className="w-full mt-3 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 h-24 resize-none" />
-            <div className="flex items-center gap-2 mt-3">
-              <input type="checkbox" id="checklist" checked={form.checklist_passed}
-                onChange={e => setForm({...form, checklist_passed: e.target.checked})}
-                className="w-4 h-4" />
-              <label htmlFor="checklist" className="text-sm text-gray-600">투자 원칙 체크리스트 확인 완료</label>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button onClick={handleSubmit} disabled={loading}
-                className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                {loading ? '저장중...' : '저장'}
-              </button>
-              <button onClick={() => setShowForm(false)}
-                className="px-6 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">
-                취소
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 매매일지 목록 */}
-        <div className="flex flex-col gap-3">
-          {trades.length === 0 && (
-            <div className="text-center py-16 text-gray-400">
-              <p className="text-4xl mb-3">📝</p>
-              <p className="text-sm">아직 매매일지가 없어요. 첫 기록을 남겨보세요!</p>
-            </div>
-          )}
-          {trades.map(trade => (
-            <div key={trade.id} onClick={() => router.push(`/dashboard/trades/${trade.id}`)} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-blue-200 transition-colors">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <span className={`px-2 py-1 rounded-md text-xs font-bold ${trade.direction === 'buy' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>
-                    {trade.direction === 'buy' ? '매수' : '매도'}
-                  </span>
-                  <span className="font-bold text-gray-900">{trade.ticker}</span>
-                  <span className="text-gray-500 text-sm">{trade.name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {trade.emotion_tag && (
-                    <span className="text-xs px-2 py-1 bg-gray-100 text-gray-500 rounded-md">
-                      {emotionLabels[trade.emotion_tag] || trade.emotion_tag}
-                    </span>
-                  )}
-                  <button onClick={() => handleDelete(trade.id)}
-                    className="text-xs text-gray-300 hover:text-red-400">삭제</button>
-                </div>
-              </div>
-              <div className="mt-3 flex gap-4 text-sm text-gray-600">
-                <span>{trade.quantity}주 × {trade.price.toLocaleString()}원</span>
-                <span className="text-gray-400">총 {(trade.quantity * trade.price).toLocaleString()}원</span>
-              </div>
-              {trade.reason && (
-                <p className="mt-2 text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">{trade.reason}</p>
-              )}
-              <p className="mt-2 text-xs text-gray-300">{new Date(trade.traded_at).toLocaleString('ko-KR')}</p>
+      {/* 요약 카드 */}
+      {summary && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
+          {[
+            { label: 'Total Trades', value: summary.total_trades, unit: '' },
+            { label: 'Buy', value: summary.buy_count, unit: '', color: '#2d7a4f' },
+            { label: 'Sell', value: summary.sell_count, unit: '', color: '#c94444' },
+            { label: 'Win Rate', value: summary.win_rate, unit: '%', color: summary.win_rate >= 50 ? '#2d7a4f' : '#c94444' },
+          ].map(item => (
+            <div key={item.label} style={{
+              background: '#fff', borderRadius: '12px', padding: '18px',
+              border: '0.5px solid #e2e8f0'
+            }}>
+              <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>{item.label}</div>
+              <div style={{ fontSize: '28px', fontWeight: 500, color: item.color || '#1c2333' }}>{item.value}{item.unit}</div>
             </div>
           ))}
         </div>
+      )}
+
+      {/* 매매일지 작성 폼 */}
+      {showForm && (
+        <div style={{
+          background: '#fff', borderRadius: '14px', padding: '24px',
+          border: '0.5px solid #e2e8f0', marginBottom: '20px'
+        }}>
+          <div style={{ fontSize: '15px', fontWeight: 500, color: '#1c2333', marginBottom: '18px' }}>New Trade Entry</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>TICKER</div>
+              <input placeholder="AAPL" value={form.ticker}
+                onChange={e => setForm({...form, ticker: e.target.value})} {...inp()} />
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>NAME</div>
+              <input placeholder="Apple Inc." value={form.name}
+                onChange={e => setForm({...form, name: e.target.value})} {...inp()} />
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>DIRECTION</div>
+              <select value={form.direction} onChange={e => setForm({...form, direction: e.target.value})} {...inp()}>
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>EMOTION</div>
+              <select value={form.emotion_tag} onChange={e => setForm({...form, emotion_tag: e.target.value})} {...inp()}>
+                <option value="analysis">Analysis</option>
+                <option value="confident">Confident</option>
+                <option value="anxious">Anxious</option>
+                <option value="fomo">FOMO</option>
+                <option value="recommended">Recommended</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>QTY</div>
+              <input placeholder="10" type="number" value={form.quantity}
+                onChange={e => setForm({...form, quantity: e.target.value})} {...inp()} />
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>PRICE</div>
+              <input placeholder="150" type="number" value={form.price}
+                onChange={e => setForm({...form, price: e.target.value})} {...inp()} />
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>TARGET</div>
+              <input placeholder="Optional" type="number" value={form.target_price}
+                onChange={e => setForm({...form, target_price: e.target.value})} {...inp()} />
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>STOP LOSS</div>
+              <input placeholder="Optional" type="number" value={form.stop_loss}
+                onChange={e => setForm({...form, stop_loss: e.target.value})} {...inp()} />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>DATE & TIME</div>
+              <input type="datetime-local" value={form.traded_at}
+                onChange={e => setForm({...form, traded_at: e.target.value})} {...inp()} />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '5px' }}>REASON <span style={{ color: '#c94444' }}>*</span></div>
+              <textarea placeholder="Why are you making this trade?" value={form.reason}
+                onChange={e => setForm({...form, reason: e.target.value})}
+                style={{ ...inp().style, height: '80px', resize: 'none' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+            <input type="checkbox" id="checklist" checked={form.checklist_passed}
+              onChange={e => setForm({...form, checklist_passed: e.target.checked})} />
+            <label htmlFor="checklist" style={{ fontSize: '12px', color: '#94a3b8' }}>Principle checklist confirmed</label>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
+            <button onClick={handleSubmit} disabled={loading}
+              style={{
+                flex: 1, padding: '11px', borderRadius: '8px', border: 'none',
+                background: loading ? '#94a3b8' : '#1c2333', color: '#fff',
+                fontSize: '13px', fontWeight: 500, cursor: 'pointer'
+              }}>
+              {loading ? 'Saving...' : 'Save Trade'}
+            </button>
+            <button onClick={() => setShowForm(false)}
+              style={{
+                padding: '11px 20px', borderRadius: '8px',
+                border: '0.5px solid #e2e8f0', background: '#fff',
+                color: '#94a3b8', fontSize: '13px', cursor: 'pointer'
+              }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 매매일지 목록 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {trades.length === 0 && (
+          <div style={{
+            textAlign: 'center', padding: '60px',
+            background: '#fff', borderRadius: '14px', border: '0.5px solid #e2e8f0'
+          }}>
+            <i className="ti ti-notebook" style={{ fontSize: '32px', color: '#c0cad8', display: 'block', marginBottom: '12px' }} aria-hidden="true"></i>
+            <div style={{ fontSize: '14px', color: '#94a3b8' }}>No trades yet. Start recording your first trade.</div>
+          </div>
+        )}
+        {trades.map(trade => (
+          <div key={trade.id}
+            onClick={() => router.push(`/dashboard/trades/${trade.id}`)}
+            style={{
+              background: '#fff', borderRadius: '12px', padding: '16px 20px',
+              border: '0.5px solid #e2e8f0', cursor: 'pointer',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              transition: 'border-color 0.15s'
+            }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#94a3b8')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <span style={{
+                fontSize: '10px', fontWeight: 500, padding: '3px 9px', borderRadius: '4px',
+                textTransform: 'uppercase', letterSpacing: '0.04em',
+                background: trade.direction === 'buy' ? '#e8f5ee' : '#fdf0f0',
+                color: trade.direction === 'buy' ? '#2d7a4f' : '#c94444',
+                border: `0.5px solid ${trade.direction === 'buy' ? '#b8dfc8' : '#f5c2c2'}`
+              }}>
+                {trade.direction}
+              </span>
+              <div>
+                <span style={{ fontSize: '14px', fontWeight: 500, color: '#1c2333' }}>{trade.ticker}</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: '8px' }}>{trade.name}</span>
+              </div>
+              {trade.emotion_tag && (
+                <span style={{
+                  fontSize: '11px', padding: '2px 8px', borderRadius: '4px',
+                  background: '#f0f2f5', color: '#94a3b8'
+                }}>
+                  {emotionLabels[trade.emotion_tag] || trade.emotion_tag}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '13px', fontWeight: 500, color: '#1c2333' }}>
+                  {(trade.quantity * trade.price).toLocaleString()}
+                </div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  {trade.quantity} × {trade.price.toLocaleString()}
+                </div>
+              </div>
+              <div style={{ fontSize: '11px', color: '#c0cad8' }}>
+                {new Date(trade.traded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </div>
+              <button onClick={e => { e.stopPropagation(); handleDelete(trade.id) }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: '#c0cad8', fontSize: '14px', padding: '4px'
+                }}>
+                <i className="ti ti-trash" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
