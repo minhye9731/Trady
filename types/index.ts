@@ -89,3 +89,22 @@ export interface Me {
   nickname: string;
   plan: string;
 }
+
+export type MarketIndicator = Indicator;
+
+export type SignalType = 'buy' | 'sell' | 'hold' | 'strong_buy' | 'strong_sell';
+
+export interface TradeFormData {
+  ticker: string;
+  name: string | null;
+  direction: TradeDirection;
+  quantity: number;
+  price: number;
+  reason: string | null;
+  emotion_tag: EmotionTag | null;
+  target_price: number | null;
+  stop_loss: number | null;
+  checklist_passed: boolean;
+  outcome: TradeOutcome | null;
+  traded_at: string;
+}
