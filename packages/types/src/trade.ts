@@ -6,12 +6,16 @@ export type Trade = {
   direction: 'buy' | 'sell'
   quantity: number
   price: number
+  currency: string
+  fee?: number
   reason: string
   emotionTag?: 'confident' | 'anxious' | 'fomo' | 'analysis' | 'recommended'
   targetPrice?: number
   stopLoss?: number
   checklistPassed: boolean
   outcome?: 'profit' | 'loss' | 'holding'
+  realizedProfit?: number
+  realizedReturnPct?: number
   tradedAt: string
   createdAt: string
 }
