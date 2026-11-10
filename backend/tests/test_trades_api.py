@@ -490,5 +490,235 @@ def test_timezone_aware_datetime_sorting():
     assert positions[0].total_quantity == Decimal('5')
 
 
+def test_create_trade_with_decimal_json_serialization():
+    """Test that create_trade properly serializes Decimal to JSON for DB"""
+    from unittest.mock import Mock, patch
+    from app.routers.trades import create_trade, TradeInput
+
+    # Mock supabase
+    mock_authed = Mock()
+    mock_trades_table = Mock()
+    mock_positions_table = Mock()
+
+    # Mock insert/update to capture payloads
+    payloads = {'insert': None, 'update': None}
+
+    def capture_insert(data):
+        payloads['insert'] = data
+        mock_insert_res = Mock()
+        mock_insert_res.data = [{'id': 'trade_123'} | data]
+        return mock_insert_res
+
+    mock_trades_table.insert.side_effect = capture_insert
+    mock_trades_table.select().eq().eq().eq().order().order().execute.return_value = Mock(data=[])
+    mock_trades_table.select().eq().execute.return_value = Mock(data=[{'id': 'trade_123', 'quantity': Decimal('0.1')}])
+
+    mock_positions_table.delete().eq().eq().eq().execute.return_value = Mock(data=[])
+    mock_positions_table.insert.return_value = Mock(data=[{'id': 'pos_123'}])
+
+    def get_table(name):
+        if name == 'trades':
+            return mock_trades_table
+        elif name == 'positions':
+            return mock_positions_table
+
+    mock_authed.table.side_effect = get_table
+
+    with patch('app.routers.trades.supabase_with_token', return_value=mock_authed):
+        with patch('app.routers.trades.get_user_id', return_value='user_123'):
+            with patch('app.routers.trades.get_token', return_value='token_123'):
+                body = TradeInput(
+                    ticker='BTC',
+                    name='Bitcoin',
+                    direction='buy',
+                    quantity=Decimal('0.1'),
+                    price=Decimal('50000.50'),
+                    currency='USD',
+                    fee=Decimal('1.25'),
+                    reason='Test',
+                    emotion_tag='analysis',
+                    target_price=Decimal('55000'),
+                    stop_loss=Decimal('45000'),
+                    checklist_passed=True,
+                    sell_decision=None,
+                    traded_at=datetime(2026, 1, 1, 10, 0),  # naive datetime
+                )
+
+                result = create_trade(body, token='token_123', user_id='user_123')
+
+    # Verify payload was successfully JSON serializable
+    import json
+    payload = payloads['insert']
+    assert payload is not None
+    json_str = json.dumps(payload)  # Should not raise
+    parsed = json.loads(json_str)
+
+    # Verify Decimal values became strings in JSON
+    assert isinstance(parsed['quantity'], str) or isinstance(parsed['quantity'], (int, float))
+    assert isinstance(parsed['price'], str) or isinstance(parsed['price'], (int, float))
+
+
+def test_create_trade_with_mock_db_json_response():
+    """Test create_trade with mock DB returning ISO strings and numeric types"""
+    from unittest.mock import Mock, patch, MagicMock
+    from app.routers.trades import create_trade, TradeInput
+
+    # Track what was written
+    written_trades = []
+
+    mock_authed = Mock()
+
+    # Mock DB responses like Supabase: quantity as float/int, datetime as ISO string
+    def mock_trades_select():
+        mock_select = Mock()
+        mock_select.eq = Mock(side_effect=lambda *args, **kwargs: mock_select)
+        mock_select.order = Mock(side_effect=lambda *args, **kwargs: mock_select)
+
+        def execute():
+            # First call: existing trades for group (empty)
+            # Second call: fetch updated trade
+            return Mock(data=[{
+                'id': 'trade_new',
+                'ticker': 'BTC',
+                'currency': 'USD',
+                'direction': 'buy',
+                'quantity': 0.1,  # int/float from Supabase
+                'price': 50000.5,
+                'fee': 1.25,
+                'traded_at': '2026-01-01T10:00:00+00:00',  # ISO string with TZ
+                'created_at': '2026-01-01T10:00:00.123456+00:00',
+            }])
+
+        mock_select.execute = execute
+        return mock_select
+
+    def mock_positions_select():
+        mock_select = Mock()
+        mock_select.eq = Mock(side_effect=lambda *args, **kwargs: mock_select)
+
+        def execute():
+            return Mock(data=[])
+
+        mock_select.execute = execute
+        return mock_select
+
+    def get_table(name):
+        if name == 'trades':
+            mock_table = Mock()
+            mock_table.select = mock_trades_select
+            mock_table.insert = Mock(return_value=Mock(
+                execute=Mock(return_value=Mock(data=[{'id': 'trade_new'}]))
+            ))
+            mock_table.update = Mock(return_value=Mock(
+                eq=Mock(side_effect=lambda *args, **kwargs: Mock(
+                    execute=Mock(return_value=Mock(data=[]))
+                ))
+            ))
+            mock_table.delete = Mock(return_value=Mock(
+                eq=Mock(side_effect=lambda *args, **kwargs: Mock(
+                    execute=Mock(return_value=Mock(data=[]))
+                ))
+            ))
+            return mock_table
+        elif name == 'positions':
+            mock_table = Mock()
+            mock_table.delete = Mock(return_value=Mock(
+                eq=Mock(side_effect=lambda *args, **kwargs: Mock(
+                    execute=Mock(return_value=Mock(data=[]))
+                ))
+            ))
+            mock_table.insert = Mock(return_value=Mock(
+                execute=Mock(return_value=Mock(data=[{'id': 'pos_123'}]))
+            ))
+            return mock_table
+
+    mock_authed.table.side_effect = get_table
+
+    with patch('app.routers.trades.supabase_with_token', return_value=mock_authed):
+        with patch('app.routers.trades.get_user_id', return_value='user_123'):
+            with patch('app.routers.trades.get_token', return_value='token_123'):
+                # Use naive datetime for body (as client would send)
+                body = TradeInput(
+                    ticker='BTC',
+                    name='Bitcoin',
+                    direction='buy',
+                    quantity=Decimal('0.1'),
+                    price=Decimal('50000.50'),
+                    currency='USD',
+                    fee=Decimal('1.25'),
+                    reason='Test buy',
+                    emotion_tag='analysis',
+                    target_price=Decimal('55000'),
+                    stop_loss=Decimal('45000'),
+                    checklist_passed=True,
+                    sell_decision=None,
+                    traded_at=datetime(2026, 1, 1, 10, 0),  # NAIVE - no timezone
+                )
+
+                # Should not raise timezone comparison errors
+                result = create_trade(body, token='token_123', user_id='user_123')
+
+                # Verify result was returned
+                assert result is not None
+
+
+def test_fractional_buy_sell_realized_profit():
+    """Test fractional quantity buy+sell with realized profit calculation"""
+    from app.models.position import compute_positions
+
+    trades = [
+        {
+            'id': 'buy1',
+            'ticker': 'BTC',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('0.1'),  # From API
+            'price': Decimal('50000'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'buy2',
+            'ticker': 'BTC',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('0.2'),
+            'price': Decimal('51000'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'sell1',
+            'ticker': 'BTC',
+            'currency': 'USD',
+            'direction': 'sell',
+            'quantity': Decimal('0.15'),
+            'price': Decimal('52000'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc),
+        },
+    ]
+
+    positions, trades_updates = compute_positions(trades)
+
+    # avg = (0.1*50000 + 0.2*51000) / 0.3 = (5000 + 10200) / 0.3 = 50666.6666...
+    # realized_profit = (52000 - 50666.6666...) * 0.15 = 1333.3333... * 0.15 = 200
+    expected_avg = (Decimal('0.1') * Decimal('50000') + Decimal('0.2') * Decimal('51000')) / Decimal('0.3')
+    expected_profit = (Decimal('52000') - expected_avg) * Decimal('0.15')
+
+    assert trades_updates['sell1'].outcome == 'profit'
+    assert trades_updates['sell1'].realized_profit == expected_profit
+    assert positions[0].total_quantity == Decimal('0.15')  # 0.3 - 0.15
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

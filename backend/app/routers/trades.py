@@ -135,7 +135,7 @@ def create_trade(body: TradeInput, token: str = Depends(get_token), user_id: str
     if traded_at.tzinfo is None:
         traded_at = traded_at.replace(tzinfo=timezone.utc)
 
-    data = body.model_dump(exclude_unset=True)
+    data = body.model_dump(mode="json", exclude_unset=True)
     data["ticker"] = ticker
     data["currency"] = currency
     data["user_id"] = user_id
@@ -315,7 +315,7 @@ def update_trade(trade_id: str, body: TradeInput, token: str = Depends(get_token
         raise HTTPException(status_code=400, detail=str(e))
 
     # Only after validation passes: write to database
-    data = body.model_dump(exclude_unset=True)
+    data = body.model_dump(mode="json", exclude_unset=True)
     data["ticker"] = ticker
     data["currency"] = currency
     data["traded_at"] = traded_at.isoformat()
