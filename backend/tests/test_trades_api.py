@@ -492,53 +492,93 @@ def test_timezone_aware_datetime_sorting():
 
 def test_create_trade_with_decimal_json_serialization():
     """Test that TradeInput.model_dump(mode='json') converts Decimal to JSON-serializable"""
-    import json
-    from app.routers.trades import TradeInput
-
-    # Create TradeInput with Decimal fields
-    body = TradeInput(
-        ticker='BTC',
-        name='Bitcoin',
-        direction='buy',
-        quantity=Decimal('0.1'),
-        price=Decimal('50000.50'),
-        currency='USD',
-        fee=Decimal('1.25'),
-        reason='Test',
-        emotion_tag='analysis',
-        target_price=Decimal('55000'),
-        stop_loss=Decimal('45000'),
-        checklist_passed=True,
-        sell_decision=None,
-        traded_at=datetime(2026, 1, 1, 10, 0),
-    )
-
-    # Simulate what create_trade does
-    data = body.model_dump(mode="json", exclude_unset=True)
-    data["ticker"] = 'BTC'
-    data["currency"] = 'USD'
-    data["user_id"] = 'user_123'
-    data["traded_at"] = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc).isoformat()
-    data.pop("outcome", None)
-
-    # Verify JSON serializable
-    json_str = json.dumps(data)  # Should not raise
-    parsed = json.loads(json_str)
-
-    # Verify Decimal values are in the payload
-    assert 'quantity' in parsed
-    assert 'price' in parsed
-    assert parsed['quantity'] is not None
-    assert parsed['price'] is not None
-
-
-def test_create_trade_with_mock_db_json_response():
-    """Test create_trade: existing buy (DB float/ISO) + new sell (naive) with exact realized profit"""
     from unittest.mock import Mock, patch
-    from app.routers.trades import TradeInput
+    from app.routers.trades import TradeInput, create_trade
     import json
 
     mock_authed = Mock()
+    payloads = {'insert': None}
+
+    def capture_insert(data):
+        payloads['insert'] = data
+        # Verify payload is JSON serializable immediately
+        json.dumps(data)
+        mock_execute = Mock()
+        mock_execute.data = [{'id': 'trade_123'} | data]
+        mock_insert = Mock()
+        mock_insert.execute = Mock(return_value=mock_execute)
+        return mock_insert
+
+    # Setup trades table mock with select chain
+    mock_select_chain = Mock()
+    mock_select_chain.eq = Mock(return_value=mock_select_chain)
+    mock_select_chain.order = Mock(return_value=mock_select_chain)
+    mock_select_chain.execute = Mock(return_value=Mock(data=[]))
+
+    mock_trades_table = Mock()
+    mock_trades_table.insert = Mock(side_effect=capture_insert)
+    mock_trades_table.select = Mock(return_value=mock_select_chain)
+
+    # Setup positions table mock
+    mock_pos_chain = Mock()
+    mock_pos_chain.eq = Mock(return_value=mock_pos_chain)
+    mock_pos_chain.execute = Mock(return_value=Mock(data=[]))
+
+    mock_positions_table = Mock()
+    mock_positions_table.delete = Mock(return_value=mock_pos_chain)
+    mock_positions_table.insert = Mock(return_value=Mock(execute=Mock(return_value=Mock(data=[{'id': 'pos_1'}]))))
+
+    def get_table(name):
+        if name == 'trades':
+            return mock_trades_table
+        elif name == 'positions':
+            return mock_positions_table
+
+    mock_authed.table.side_effect = get_table
+
+    with patch('app.routers.trades.supabase_with_token', return_value=mock_authed):
+        with patch('app.routers.trades.get_user_id', return_value='user_123'):
+            with patch('app.routers.trades.get_token', return_value='token_123'):
+                body = TradeInput(
+                    ticker='BTC',
+                    name='Bitcoin',
+                    direction='buy',
+                    quantity=Decimal('0.1'),
+                    price=Decimal('50000.50'),
+                    currency='USD',
+                    fee=Decimal('1.25'),
+                    reason='Test',
+                    emotion_tag='analysis',
+                    target_price=Decimal('55000'),
+                    stop_loss=Decimal('45000'),
+                    checklist_passed=True,
+                    sell_decision=None,
+                    traded_at=datetime(2026, 1, 1, 10, 0),
+                )
+
+                result = create_trade(body, token='token_123', user_id='user_123')
+
+    # Verify payload was captured and is JSON serializable
+    assert payloads['insert'] is not None
+    payload = payloads['insert']
+
+    # Already called during insert, verify again
+    json_str = json.dumps(payload)
+    parsed = json.loads(json_str)
+
+    # Verify Decimal values present
+    assert 'quantity' in parsed
+    assert 'price' in parsed
+
+
+def test_create_trade_with_mock_db_json_response():
+    """Test create_trade: existing buy (DB float/ISO) + new sell (naive) with realized profit"""
+    from unittest.mock import Mock, patch
+    from app.routers.trades import TradeInput, create_trade
+    import json
+
+    mock_authed = Mock()
+    inserted_trades = []  # Track inserted trades
     update_payloads = []
 
     # Mock DB responses like Supabase: quantity as float/int, datetime as ISO string
@@ -548,8 +588,8 @@ def test_create_trade_with_mock_db_json_response():
         mock_select.order = Mock(side_effect=lambda *args, **kwargs: mock_select)
 
         def execute():
-            # Return existing buy trade (DB format: float quantity, ISO datetime)
-            return Mock(data=[{
+            # Return existing buy trade + any inserted sells
+            data = [{
                 'id': 'buy1',
                 'ticker': 'BTC',
                 'currency': 'USD',
@@ -559,7 +599,10 @@ def test_create_trade_with_mock_db_json_response():
                 'fee': None,
                 'traded_at': '2026-01-01T10:00:00+00:00',  # ISO with TZ
                 'created_at': '2026-01-01T10:00:00+00:00',
-            }])
+            }]
+            # Add inserted trades (from insert calls)
+            data.extend(inserted_trades)
+            return Mock(data=data)
 
         mock_select.execute = execute
         return mock_select
@@ -580,8 +623,8 @@ def test_create_trade_with_mock_db_json_response():
             mock_table.select = mock_trades_select
 
             def mock_insert(data):
-                # Capture insert payload for JSON serialization test
-                json.dumps(data)  # Should not raise
+                json.dumps(data)  # Verify JSON serializable
+                inserted_trades.append({'id': 'sell1'} | data)
                 mock_execute = Mock()
                 mock_execute.data = [{'id': 'sell1'} | data]
                 mock_res = Mock()
@@ -623,8 +666,6 @@ def test_create_trade_with_mock_db_json_response():
     with patch('app.routers.trades.supabase_with_token', return_value=mock_authed):
         with patch('app.routers.trades.get_user_id', return_value='user_123'):
             with patch('app.routers.trades.get_token', return_value='token_123'):
-                from app.routers.trades import create_trade
-
                 # Sell (new trade with naive datetime)
                 body = TradeInput(
                     ticker='BTC',
@@ -646,15 +687,17 @@ def test_create_trade_with_mock_db_json_response():
                 # Should not raise timezone comparison errors
                 result = create_trade(body, token='token_123', user_id='user_123')
 
-                # Verify result
-                assert result is not None
+    # Verify result
+    assert result is not None
 
-                # Verify realized_profit was calculated: (52000 - 50000) * 0.05 = 100
-                assert len(update_payloads) > 0
-                sell_update = update_payloads[-1]  # Last update should be the sell
-                if 'realized_profit' in sell_update:
-                    profit = Decimal(str(sell_update['realized_profit']))
-                    assert profit == Decimal('100')  # (52000 - 50000) * 0.05
+    # Verify realized_profit was calculated: (52000 - 50000) * 0.05 = 100
+    assert len(update_payloads) > 0
+    sell_update = update_payloads[-1]  # Last update should be the sell
+
+    # realized_profit must be present and correct (not in if block)
+    assert 'realized_profit' in sell_update, f"realized_profit missing in update: {sell_update}"
+    profit = Decimal(str(sell_update['realized_profit']))
+    assert profit == Decimal('100'), f"Expected profit 100, got {profit}"
 
 
 def test_fractional_buy_sell_realized_profit():
