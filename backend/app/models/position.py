@@ -21,7 +21,7 @@ class ComputedPosition:
 class ComputedTrade:
     """Trade with computed values (for sells)"""
     trade_id: str  # id from input
-    position_id: Optional[str]  # Will be set by compute_positions
+    position_index: int  # Index into positions list (for position_id mapping)
     outcome: Optional[str]  # 'holding', 'profit', 'loss'
     realized_profit: Optional[Decimal] = None
     realized_return_pct: Optional[Decimal] = None
@@ -59,6 +59,7 @@ def compute_positions(trades_data: list[dict]) -> tuple[list[ComputedPosition], 
 
     positions: list[ComputedPosition] = []
     trades_updates: dict[str, ComputedTrade] = {}
+    position_index = 0  # Track position creation order across all groups
 
     # Process each ticker+currency
     for (ticker, currency), ticker_trades in by_ticker_currency.items():
@@ -69,6 +70,7 @@ def compute_positions(trades_data: list[dict]) -> tuple[list[ComputedPosition], 
         avg_price = Decimal(0)
         total_cost = Decimal(0)
         position: Optional[ComputedPosition] = None
+        current_position_index = None
         opened_at = None
 
         for trade in ticker_trades:
@@ -77,9 +79,11 @@ def compute_positions(trades_data: list[dict]) -> tuple[list[ComputedPosition], 
 
             if direction == 'buy':
                 # Add to position
-                qty = Decimal(str(trade['quantity']))
-                price = Decimal(str(trade['price']))
-                fee = Decimal(str(trade.get('fee') or 0))
+                qty = trade['quantity'] if isinstance(trade['quantity'], Decimal) else Decimal(str(trade['quantity']))
+                price = trade['price'] if isinstance(trade['price'], Decimal) else Decimal(str(trade['price']))
+                fee = trade.get('fee') or Decimal(0)
+                if not isinstance(fee, Decimal):
+                    fee = Decimal(str(fee))
 
                 # Recalculate average price
                 new_total_cost = total_cost + (qty * price) + fee
@@ -100,6 +104,8 @@ def compute_positions(trades_data: list[dict]) -> tuple[list[ComputedPosition], 
                         opened_at=opened_at
                     )
                     positions.append(position)
+                    current_position_index = position_index
+                    position_index += 1
                 else:
                     position.total_quantity = quantity
                     position.average_price = avg_price
@@ -108,13 +114,13 @@ def compute_positions(trades_data: list[dict]) -> tuple[list[ComputedPosition], 
                 # Trade update
                 trades_updates[trade_id] = ComputedTrade(
                     trade_id=trade_id,
-                    position_id=None,  # Will be filled by API
+                    position_index=current_position_index,
                     outcome='holding'
                 )
 
             elif direction == 'sell':
                 # Validate quantity
-                sell_qty = Decimal(str(trade['quantity']))
+                sell_qty = trade['quantity'] if isinstance(trade['quantity'], Decimal) else Decimal(str(trade['quantity']))
                 if quantity < sell_qty:
                     raise ValueError(
                         f"Sell quantity {sell_qty} exceeds holding {quantity} "
@@ -122,8 +128,10 @@ def compute_positions(trades_data: list[dict]) -> tuple[list[ComputedPosition], 
                     )
 
                 # Calculate realized profit
-                sell_price = Decimal(str(trade['price']))
-                sell_fee = Decimal(str(trade.get('fee') or 0))
+                sell_price = trade['price'] if isinstance(trade['price'], Decimal) else Decimal(str(trade['price']))
+                sell_fee = trade.get('fee') or Decimal(0)
+                if not isinstance(sell_fee, Decimal):
+                    sell_fee = Decimal(str(sell_fee))
 
                 realized_profit = (sell_price - avg_price) * sell_qty - sell_fee
                 realized_return_pct = (realized_profit / (avg_price * sell_qty)) * Decimal(100) if sell_qty > 0 else Decimal(0)
@@ -154,7 +162,7 @@ def compute_positions(trades_data: list[dict]) -> tuple[list[ComputedPosition], 
                 # Trade update
                 trades_updates[trade_id] = ComputedTrade(
                     trade_id=trade_id,
-                    position_id=None,  # Will be filled by API
+                    position_index=current_position_index,
                     outcome=outcome,
                     realized_profit=realized_profit,
                     realized_return_pct=realized_return_pct,

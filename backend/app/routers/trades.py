@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from app.db import supabase, supabase_with_token
 from app.models.position import compute_positions
@@ -35,18 +35,35 @@ def recalculate_positions_for_group(authed, user_id: str, ticker: str, currency:
     # Prepare trades for compute_positions
     trades_data = []
     for t in trades:
+        # Parse datetime with timezone awareness
+        traded_at_str = t['traded_at']
+        if isinstance(traded_at_str, str):
+            traded_at = datetime.fromisoformat(traded_at_str)
+            if traded_at.tzinfo is None:
+                traded_at = traded_at.replace(tzinfo=timezone.utc)
+        else:
+            traded_at = t['traded_at']
+
+        created_at_str = t['created_at']
+        if isinstance(created_at_str, str):
+            created_at = datetime.fromisoformat(created_at_str)
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+        else:
+            created_at = t['created_at']
+
         trades_data.append({
             'id': t['id'],
             'ticker': t['ticker'],
             'currency': t['currency'],
             'direction': t['direction'],
-            'quantity': float(t['quantity']),
-            'price': float(t['price']),
-            'fee': float(t.get('fee') or 0),
-            'target_price': t.get('target_price'),
-            'stop_loss': t.get('stop_loss'),
-            'traded_at': datetime.fromisoformat(t['traded_at']) if isinstance(t['traded_at'], str) else t['traded_at'],
-            'created_at': datetime.fromisoformat(t['created_at']) if isinstance(t['created_at'], str) else t['created_at'],
+            'quantity': Decimal(str(t['quantity'])),
+            'price': Decimal(str(t['price'])),
+            'fee': Decimal(str(t.get('fee') or 0)),
+            'target_price': Decimal(str(t['target_price'])) if t.get('target_price') else None,
+            'stop_loss': Decimal(str(t['stop_loss'])) if t.get('stop_loss') else None,
+            'traded_at': traded_at,
+            'created_at': created_at,
         })
 
     # Compute positions
@@ -55,9 +72,9 @@ def recalculate_positions_for_group(authed, user_id: str, ticker: str, currency:
     # Delete existing positions for this group
     authed.table("positions").delete().eq("user_id", user_id).eq("ticker", ticker).eq("currency", currency).execute()
 
-    # Insert new positions and collect position IDs
-    position_map = {}  # ticker -> position_id
-    for pos in positions:
+    # Insert new positions and collect position IDs by index
+    position_ids = {}  # position_index -> position_id
+    for idx, pos in enumerate(positions):
         pos_data = {
             'user_id': user_id,
             'ticker': pos.ticker,
@@ -71,11 +88,9 @@ def recalculate_positions_for_group(authed, user_id: str, ticker: str, currency:
         }
         pos_res = authed.table("positions").insert(pos_data).execute()
         if pos_res.data:
-            # Map by (ticker, status) to track which position this is
-            key = (pos.ticker, pos.status)
-            position_map[key] = pos_res.data[0]['id']
+            position_ids[idx] = pos_res.data[0]['id']
 
-    # Update trades with computed values
+    # Update trades with computed values and position_id
     for trade_id, update in trades_updates.items():
         update_data = {
             'outcome': update.outcome,
@@ -85,33 +100,9 @@ def recalculate_positions_for_group(authed, user_id: str, ticker: str, currency:
         if update.realized_return_pct is not None:
             update_data['realized_return_pct'] = str(update.realized_return_pct)
 
-        # Find the position for this trade
-        trade_obj = next((t for t in trades if t['id'] == trade_id), None)
-        if trade_obj:
-            # Determine which position this trade belongs to
-            if trade_obj['direction'] == 'buy':
-                status = 'open'
-            else:
-                # Sell trade - check if position is closed after this trade
-                remaining_qty = Decimal(0)
-                for t in trades:
-                    if t['ticker'] == ticker and t['currency'] == currency:
-                        if t['traded_at'] < trade_obj['traded_at']:
-                            if t['direction'] == 'buy':
-                                remaining_qty += Decimal(str(t['quantity']))
-                            else:
-                                remaining_qty -= Decimal(str(t['quantity']))
-                        elif t['traded_at'] == trade_obj['traded_at']:
-                            if t['created_at'] < trade_obj['created_at']:
-                                if t['direction'] == 'buy':
-                                    remaining_qty += Decimal(str(t['quantity']))
-                                else:
-                                    remaining_qty -= Decimal(str(t['quantity']))
-                status = 'closed' if remaining_qty == 0 else 'open'
-
-            key = (ticker, status)
-            if key in position_map:
-                update_data['position_id'] = position_map[key]
+        # Map position_index to position_id
+        if update.position_index in position_ids:
+            update_data['position_id'] = position_ids[update.position_index]
 
         authed.table("trades").update(update_data).eq("id", trade_id).execute()
 
@@ -119,16 +110,15 @@ class TradeInput(BaseModel):
     ticker: str
     name: Optional[str] = None
     direction: str
-    quantity: float
-    price: float
+    quantity: Decimal
+    price: Decimal
     currency: str = "USD"
-    fee: Optional[float] = None
+    fee: Optional[Decimal] = None
     reason: Optional[str] = None
     emotion_tag: Optional[str] = None
-    target_price: Optional[float] = None
-    stop_loss: Optional[float] = None
+    target_price: Optional[Decimal] = None
+    stop_loss: Optional[Decimal] = None
     checklist_passed: bool = False
-    outcome: Optional[str] = None
     sell_decision: Optional[str] = None
     traded_at: datetime
 
@@ -139,11 +129,19 @@ def create_trade(body: TradeInput, token: str = Depends(get_token), user_id: str
     # Normalize and prepare data
     ticker = body.ticker.strip().upper()
     currency = body.currency.strip().upper()
+
+    # Ensure traded_at is UTC aware
+    traded_at = body.traded_at
+    if traded_at.tzinfo is None:
+        traded_at = traded_at.replace(tzinfo=timezone.utc)
+
     data = body.model_dump(exclude_unset=True)
     data["ticker"] = ticker
     data["currency"] = currency
     data["user_id"] = user_id
-    data["traded_at"] = body.traded_at.isoformat()
+    data["traded_at"] = traded_at.isoformat()
+    # Remove outcome field if present
+    data.pop("outcome", None)
 
     # Build in-memory trade list with new trade
     existing_res = authed.table("trades").select("*").eq("user_id", user_id).eq("ticker", ticker).eq("currency", currency).order("traded_at", desc=False).order("created_at", desc=False).execute()
@@ -152,34 +150,43 @@ def create_trade(body: TradeInput, token: str = Depends(get_token), user_id: str
     # Prepare all trades (existing + new) for validation
     trades_data = []
     for t in existing_trades:
+        # Parse datetime with timezone awareness
+        t_traded_at = datetime.fromisoformat(t['traded_at'])
+        if t_traded_at.tzinfo is None:
+            t_traded_at = t_traded_at.replace(tzinfo=timezone.utc)
+
+        t_created_at = datetime.fromisoformat(t['created_at'])
+        if t_created_at.tzinfo is None:
+            t_created_at = t_created_at.replace(tzinfo=timezone.utc)
+
         trades_data.append({
             'id': t['id'],
             'ticker': t['ticker'],
             'currency': t['currency'],
             'direction': t['direction'],
-            'quantity': float(t['quantity']),
-            'price': float(t['price']),
-            'fee': float(t.get('fee') or 0),
-            'target_price': t.get('target_price'),
-            'stop_loss': t.get('stop_loss'),
-            'traded_at': datetime.fromisoformat(t['traded_at']) if isinstance(t['traded_at'], str) else t['traded_at'],
-            'created_at': datetime.fromisoformat(t['created_at']) if isinstance(t['created_at'], str) else t['created_at'],
+            'quantity': Decimal(str(t['quantity'])),
+            'price': Decimal(str(t['price'])),
+            'fee': Decimal(str(t.get('fee') or 0)),
+            'target_price': Decimal(str(t['target_price'])) if t.get('target_price') else None,
+            'stop_loss': Decimal(str(t['stop_loss'])) if t.get('stop_loss') else None,
+            'traded_at': t_traded_at,
+            'created_at': t_created_at,
         })
 
-    # Add the new trade (use current timestamp for created_at)
+    # Add the new trade (use current UTC timestamp for created_at)
     new_trade_id = f"_new_{len(trades_data)}"
     trades_data.append({
         'id': new_trade_id,
         'ticker': ticker,
         'currency': currency,
         'direction': body.direction,
-        'quantity': float(body.quantity),
-        'price': float(body.price),
-        'fee': float(body.fee or 0),
+        'quantity': body.quantity,
+        'price': body.price,
+        'fee': body.fee or Decimal(0),
         'target_price': body.target_price,
         'stop_loss': body.stop_loss,
-        'traded_at': body.traded_at,
-        'created_at': datetime.now(),
+        'traded_at': traded_at,
+        'created_at': datetime.now(timezone.utc),
     })
 
     # Validate with compute_positions
@@ -230,6 +237,11 @@ def update_trade(trade_id: str, body: TradeInput, token: str = Depends(get_token
     ticker = body.ticker.strip().upper()
     currency = body.currency.strip().upper()
 
+    # Ensure traded_at is UTC aware
+    traded_at = body.traded_at
+    if traded_at.tzinfo is None:
+        traded_at = traded_at.replace(tzinfo=timezone.utc)
+
     # If ticker or currency changed, need to recalculate both groups
     groups_to_recalc = set()
     if old_ticker != ticker or old_currency != currency:
@@ -250,33 +262,46 @@ def update_trade(trade_id: str, body: TradeInput, token: str = Depends(get_token
             if t['id'] == trade_id:
                 # Skip the old version
                 continue
+
+            t_traded_at = datetime.fromisoformat(t['traded_at'])
+            if t_traded_at.tzinfo is None:
+                t_traded_at = t_traded_at.replace(tzinfo=timezone.utc)
+
+            t_created_at = datetime.fromisoformat(t['created_at'])
+            if t_created_at.tzinfo is None:
+                t_created_at = t_created_at.replace(tzinfo=timezone.utc)
+
             trades_data.append({
                 'id': t['id'],
                 'ticker': t['ticker'],
                 'currency': t['currency'],
                 'direction': t['direction'],
-                'quantity': float(t['quantity']),
-                'price': float(t['price']),
-                'fee': float(t.get('fee') or 0),
-                'target_price': t.get('target_price'),
-                'stop_loss': t.get('stop_loss'),
-                'traded_at': datetime.fromisoformat(t['traded_at']) if isinstance(t['traded_at'], str) else t['traded_at'],
-                'created_at': datetime.fromisoformat(t['created_at']) if isinstance(t['created_at'], str) else t['created_at'],
+                'quantity': Decimal(str(t['quantity'])),
+                'price': Decimal(str(t['price'])),
+                'fee': Decimal(str(t.get('fee') or 0)),
+                'target_price': Decimal(str(t['target_price'])) if t.get('target_price') else None,
+                'stop_loss': Decimal(str(t['stop_loss'])) if t.get('stop_loss') else None,
+                'traded_at': t_traded_at,
+                'created_at': t_created_at,
             })
 
         # Add the updated trade
+        old_created_at = datetime.fromisoformat(old_trade['created_at'])
+        if old_created_at.tzinfo is None:
+            old_created_at = old_created_at.replace(tzinfo=timezone.utc)
+
         trades_data.append({
             'id': trade_id,
             'ticker': ticker,
             'currency': currency,
             'direction': body.direction,
-            'quantity': float(body.quantity),
-            'price': float(body.price),
-            'fee': float(body.fee or 0),
+            'quantity': body.quantity,
+            'price': body.price,
+            'fee': body.fee or Decimal(0),
             'target_price': body.target_price,
             'stop_loss': body.stop_loss,
-            'traded_at': body.traded_at,
-            'created_at': datetime.fromisoformat(old_trade['created_at']) if isinstance(old_trade['created_at'], str) else old_trade['created_at'],
+            'traded_at': traded_at,
+            'created_at': old_created_at,
         })
 
         all_trades_for_validation[group] = trades_data
@@ -293,7 +318,9 @@ def update_trade(trade_id: str, body: TradeInput, token: str = Depends(get_token
     data = body.model_dump(exclude_unset=True)
     data["ticker"] = ticker
     data["currency"] = currency
-    data["traded_at"] = body.traded_at.isoformat()
+    data["traded_at"] = traded_at.isoformat()
+    # Remove outcome field if present
+    data.pop("outcome", None)
 
     authed.table("trades").update(data).eq("id", trade_id).eq("user_id", user_id).execute()
 
@@ -326,18 +353,27 @@ def delete_trade(trade_id: str, token: str = Depends(get_token), user_id: str = 
     for t in existing_trades:
         if t['id'] == trade_id:
             continue
+
+        t_traded_at = datetime.fromisoformat(t['traded_at'])
+        if t_traded_at.tzinfo is None:
+            t_traded_at = t_traded_at.replace(tzinfo=timezone.utc)
+
+        t_created_at = datetime.fromisoformat(t['created_at'])
+        if t_created_at.tzinfo is None:
+            t_created_at = t_created_at.replace(tzinfo=timezone.utc)
+
         trades_data.append({
             'id': t['id'],
             'ticker': t['ticker'],
             'currency': t['currency'],
             'direction': t['direction'],
-            'quantity': float(t['quantity']),
-            'price': float(t['price']),
-            'fee': float(t.get('fee') or 0),
-            'target_price': t.get('target_price'),
-            'stop_loss': t.get('stop_loss'),
-            'traded_at': datetime.fromisoformat(t['traded_at']) if isinstance(t['traded_at'], str) else t['traded_at'],
-            'created_at': datetime.fromisoformat(t['created_at']) if isinstance(t['created_at'], str) else t['created_at'],
+            'quantity': Decimal(str(t['quantity'])),
+            'price': Decimal(str(t['price'])),
+            'fee': Decimal(str(t.get('fee') or 0)),
+            'target_price': Decimal(str(t['target_price'])) if t.get('target_price') else None,
+            'stop_loss': Decimal(str(t['stop_loss'])) if t.get('stop_loss') else None,
+            'traded_at': t_traded_at,
+            'created_at': t_created_at,
         })
 
     # Validate remaining trades

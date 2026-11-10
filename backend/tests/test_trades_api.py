@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import Mock, MagicMock, patch
 from app.routers.trades import (
@@ -244,39 +244,39 @@ def test_decimal_preservation_in_calculations():
             'ticker': 'AAPL',
             'currency': 'USD',
             'direction': 'buy',
-            'quantity': 100,
-            'price': 150,
-            'fee': 10,
+            'quantity': Decimal('100'),
+            'price': Decimal('150'),
+            'fee': Decimal('10'),
             'target_price': None,
             'stop_loss': None,
-            'traded_at': datetime(2026, 1, 1),
-            'created_at': datetime(2026, 1, 1),
+            'traded_at': datetime(2026, 1, 1, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, tzinfo=timezone.utc),
         },
         {
             'id': 'buy2',
             'ticker': 'AAPL',
             'currency': 'USD',
             'direction': 'buy',
-            'quantity': 50,
-            'price': 160,
-            'fee': 5,
+            'quantity': Decimal('50'),
+            'price': Decimal('160'),
+            'fee': Decimal('5'),
             'target_price': None,
             'stop_loss': None,
-            'traded_at': datetime(2026, 1, 2),
-            'created_at': datetime(2026, 1, 2),
+            'traded_at': datetime(2026, 1, 2, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 2, tzinfo=timezone.utc),
         },
         {
             'id': 'sell1',
             'ticker': 'AAPL',
             'currency': 'USD',
             'direction': 'sell',
-            'quantity': 100,
-            'price': 170,
-            'fee': 2,
+            'quantity': Decimal('100'),
+            'price': Decimal('170'),
+            'fee': Decimal('2'),
             'target_price': None,
             'stop_loss': None,
-            'traded_at': datetime(2026, 1, 3),
-            'created_at': datetime(2026, 1, 3),
+            'traded_at': datetime(2026, 1, 3, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 3, tzinfo=timezone.utc),
         },
     ]
 
@@ -289,6 +289,205 @@ def test_decimal_preservation_in_calculations():
     # Verify calculations are exact
     assert positions[0].average_price == expected_avg
     assert abs(trades_updates['sell1'].realized_profit - expected_profit) < Decimal('0.01')
+
+
+def test_position_mapping_multiple_lifecycle():
+    """Test position_index mapping with buy→sell→buy→sell→buy lifecycle"""
+    from app.models.position import compute_positions
+
+    trades = [
+        {
+            'id': 'buy1',
+            'ticker': 'MSFT',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('100'),
+            'price': Decimal('300'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 1, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'sell1',
+            'ticker': 'MSFT',
+            'currency': 'USD',
+            'direction': 'sell',
+            'quantity': Decimal('100'),
+            'price': Decimal('310'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 2, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 2, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'buy2',
+            'ticker': 'MSFT',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('50'),
+            'price': Decimal('320'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 3, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 3, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'sell2',
+            'ticker': 'MSFT',
+            'currency': 'USD',
+            'direction': 'sell',
+            'quantity': Decimal('50'),
+            'price': Decimal('330'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 4, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 4, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'buy3',
+            'ticker': 'MSFT',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('75'),
+            'price': Decimal('325'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 5, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 5, tzinfo=timezone.utc),
+        },
+    ]
+
+    positions, trades_updates = compute_positions(trades)
+
+    # Should have 3 positions: closed, closed, open
+    assert len(positions) == 3
+    assert positions[0].status == 'closed'
+    assert positions[1].status == 'closed'
+    assert positions[2].status == 'open'
+
+    # Verify position_index mapping
+    assert trades_updates['buy1'].position_index == 0
+    assert trades_updates['sell1'].position_index == 0
+    assert trades_updates['buy2'].position_index == 1
+    assert trades_updates['sell2'].position_index == 1
+    assert trades_updates['buy3'].position_index == 2
+
+
+def test_decimal_fractional_quantities():
+    """Test fractional quantities like 0.1 + 0.2 maintain precision"""
+    from app.models.position import compute_positions
+
+    trades = [
+        {
+            'id': 'buy1',
+            'ticker': 'BTC',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('0.1'),
+            'price': Decimal('50000'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 1, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'buy2',
+            'ticker': 'BTC',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('0.2'),
+            'price': Decimal('51000'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 2, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 2, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'sell1',
+            'ticker': 'BTC',
+            'currency': 'USD',
+            'direction': 'sell',
+            'quantity': Decimal('0.15'),
+            'price': Decimal('52000'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 3, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 3, tzinfo=timezone.utc),
+        },
+    ]
+
+    positions, trades_updates = compute_positions(trades)
+
+    # avg = (0.1*50000 + 0.2*51000) / 0.3 = (5000 + 10200) / 0.3 = 15200/0.3 = 50666.666...
+    expected_avg = (Decimal('0.1') * Decimal('50000') + Decimal('0.2') * Decimal('51000')) / Decimal('0.3')
+
+    # Verify fractional position is computed exactly
+    assert positions[0].average_price == expected_avg
+    assert positions[0].total_quantity == Decimal('0.15')
+
+
+def test_timezone_aware_datetime_sorting():
+    """Test that timezone-aware datetimes sort correctly with mixed sources"""
+    from app.models.position import compute_positions
+
+    trades = [
+        {
+            'id': 'db_buy1',
+            'ticker': 'GOOGL',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('10'),
+            'price': Decimal('2800'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'new_buy2',
+            'ticker': 'GOOGL',
+            'currency': 'USD',
+            'direction': 'buy',
+            'quantity': Decimal('5'),
+            'price': Decimal('2850'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc),
+        },
+        {
+            'id': 'db_sell1',
+            'ticker': 'GOOGL',
+            'currency': 'USD',
+            'direction': 'sell',
+            'quantity': Decimal('10'),
+            'price': Decimal('2900'),
+            'fee': Decimal('0'),
+            'target_price': None,
+            'stop_loss': None,
+            'traded_at': datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc),
+            'created_at': datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc),
+        },
+    ]
+
+    # Should not raise any timezone comparison errors
+    positions, trades_updates = compute_positions(trades)
+
+    # Verify correct calculation: 10 + 5 = 15 bought, 10 sold = 5 remaining
+    assert len(positions) == 1  # One open position with 5 shares
+    assert positions[0].status == 'open'
+    assert positions[0].total_quantity == Decimal('5')
 
 
 if __name__ == '__main__':
