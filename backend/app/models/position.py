@@ -153,11 +153,13 @@ def compute_positions(trades_data: list[dict]) -> tuple[list[ComputedPosition], 
                 # Update or close position
                 if quantity == 0:
                     position.total_quantity = Decimal(0)
+                    position.total_cost = Decimal(0)
                     position.status = 'closed'
                     position.closed_at = trade['traded_at']
                     position = None
                 else:
                     position.total_quantity = quantity
+                    position.total_cost = total_cost
 
                 # Trade update
                 trades_updates[trade_id] = ComputedTrade(

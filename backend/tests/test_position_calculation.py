@@ -344,5 +344,43 @@ class TestBackdatedBuyRecalculates:
         assert abs(sell_update.realized_profit - expected_profit) < Decimal('1')
 
 
+class TestTotalCostUpdate:
+    def test_partial_sell_updates_total_cost(self):
+        """Partial sell should decrement position.total_cost correctly"""
+        base_date = datetime(2026, 1, 1)
+        trades = [
+            create_trade('buy1', quantity=100, price=150, fee=10,
+                        traded_at=base_date),
+            create_trade('sell1', direction='sell', quantity=80, price=170, fee=2,
+                        traded_at=base_date + timedelta(hours=1)),
+        ]
+        positions, trades_updates = compute_positions(trades)
+
+        # buy: total_cost = 100*150 + 10 = 15010, avg_price = 150.10
+        # sell 80: avg_price = 15010/100 = 150.10
+        # remaining qty = 20, total_cost = 150.10 * 20 = 3002.00
+        assert len(positions) == 1
+        assert positions[0].status == 'open'
+        assert positions[0].total_quantity == Decimal('20')
+        assert positions[0].total_cost == Decimal('3002.00')
+
+    def test_full_sell_total_cost_zero(self):
+        """Full sell should close position with total_cost = 0"""
+        base_date = datetime(2026, 1, 1)
+        trades = [
+            create_trade('buy1', quantity=100, price=150, fee=10,
+                        traded_at=base_date),
+            create_trade('sell1', direction='sell', quantity=100, price=170, fee=2,
+                        traded_at=base_date + timedelta(hours=1)),
+        ]
+        positions, trades_updates = compute_positions(trades)
+
+        # Full liquidation: position should be closed with total_cost = 0
+        assert len(positions) == 1
+        assert positions[0].status == 'closed'
+        assert positions[0].total_quantity == Decimal(0)
+        assert positions[0].total_cost == Decimal(0)
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
