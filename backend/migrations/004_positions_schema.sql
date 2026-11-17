@@ -1,8 +1,10 @@
--- Phase 1: Position-based Trade Accounting System
--- Created: 2026-11-10
--- Description: Add positions table and migrate trades schema
+BEGIN;
 
--- 1. Create positions table
+-- 0. 테스트 데이터 삭제
+DELETE FROM trades;
+DELETE FROM positions;
+
+-- 1. positions 테이블 (이미 있으면 건너뜀)
 CREATE TABLE IF NOT EXISTS positions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -18,14 +20,23 @@ CREATE TABLE IF NOT EXISTS positions (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create indexes on positions
-CREATE INDEX idx_positions_user_id ON positions(user_id);
-CREATE INDEX idx_positions_user_ticker_currency ON positions(user_id, ticker, currency);
-CREATE UNIQUE INDEX idx_positions_open_unique
+-- 이미 있는 테이블에도 체크 추가
+ALTER TABLE positions DROP CONSTRAINT IF EXISTS positions_status_check;
+ALTER TABLE positions ADD CONSTRAINT positions_status_check
+  CHECK (status IN ('open', 'closed'));
+ALTER TABLE positions DROP CONSTRAINT IF EXISTS positions_quantity_check;
+ALTER TABLE positions ADD CONSTRAINT positions_quantity_check
+  CHECK (total_quantity >= 0);
+
+-- 인덱스 정리
+DROP INDEX IF EXISTS idx_positions_user_id;
+CREATE INDEX IF NOT EXISTS idx_positions_user_ticker_currency
+  ON positions(user_id, ticker, currency);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_open_unique
   ON positions(user_id, ticker, currency)
   WHERE status = 'open';
 
--- 2. Modify trades table
+-- 2. trades 컬럼
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS currency TEXT;
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS fee NUMERIC(20, 2);
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS position_id UUID REFERENCES positions(id) ON DELETE SET NULL;
@@ -33,26 +44,19 @@ ALTER TABLE trades ADD COLUMN IF NOT EXISTS sell_decision TEXT;
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS realized_profit NUMERIC(20, 2);
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS realized_return_pct NUMERIC(10, 4);
 
--- Modify existing columns
-ALTER TABLE trades ALTER COLUMN traded_at SET DATA TYPE TIMESTAMPTZ;
-ALTER TABLE trades ALTER COLUMN created_at SET DATA TYPE TIMESTAMPTZ;
+ALTER TABLE trades ALTER COLUMN currency SET NOT NULL;
+ALTER TABLE trades ALTER COLUMN traded_at TYPE TIMESTAMPTZ;
+ALTER TABLE trades ALTER COLUMN created_at TYPE TIMESTAMPTZ;
+ALTER TABLE trades ALTER COLUMN ticker TYPE TEXT;
 
--- Change ticker to TEXT (if not already)
-ALTER TABLE trades ALTER COLUMN ticker SET DATA TYPE TEXT;
-
--- Create indexes on trades
 CREATE INDEX IF NOT EXISTS idx_trades_user_ticker_traded_at
   ON trades(user_id, ticker, currency, traded_at, created_at);
 
--- 3. Enable RLS
+-- 3. RLS
 ALTER TABLE positions ENABLE ROW LEVEL SECURITY;
-
--- Create RLS policies for positions
 DROP POLICY IF EXISTS positions_user_isolation ON positions;
 CREATE POLICY positions_user_isolation ON positions
   FOR ALL USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
 
--- 4. Clear existing test data
-DELETE FROM trades WHERE 1=1;
-DELETE FROM positions WHERE 1=1;
+COMMIT;
