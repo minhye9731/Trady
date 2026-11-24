@@ -14,12 +14,16 @@ export interface Trade {
   direction: TradeDirection;
   quantity: number;
   price: number;
+  currency: string;
+  fee: number | null;
   reason: string | null;
   emotion_tag: EmotionTag | null;
   target_price: number | null;
   stop_loss: number | null;
   checklist_passed: boolean;
   outcome: TradeOutcome | null;
+  realized_profit: number | null;
+  realized_return_pct: number | null;
   traded_at: string;
 }
 
@@ -29,6 +33,8 @@ export interface TradeInput {
   direction: TradeDirection;
   quantity: number;
   price: number;
+  currency: string;
+  fee: number | null;
   reason: string | null;
   emotion_tag: EmotionTag | null;
   target_price: number | null;
@@ -100,6 +106,8 @@ export interface TradeFormData {
   direction: TradeDirection;
   quantity: number;
   price: number;
+  currency: string;
+  fee: number | null;
   reason: string | null;
   emotion_tag: EmotionTag | null;
   target_price: number | null;

@@ -31,14 +31,19 @@ export function TradeForm({
   const [name, setName] = useState(initial?.name ?? '');
   const [quantity, setQuantity] = useState(numText(initial?.quantity));
   const [price, setPrice] = useState(numText(initial?.price));
+  const [currency, setCurrency] = useState(initial?.currency ?? 'USD');
+  const [fee, setFee] = useState(numText(initial?.fee));
   const [tradedAt, setTradedAt] = useState(initial ? new Date(initial.traded_at) : new Date());
   const [emotion, setEmotion] = useState<EmotionTag>(initial?.emotion_tag ?? 'analysis');
   const [reason, setReason] = useState(initial?.reason ?? '');
   const [target, setTarget] = useState(numText(initial?.target_price));
   const [stop, setStop] = useState(numText(initial?.stop_loss));
-  const [outcome, setOutcome] = useState<TradeOutcome>(initial?.outcome ?? 'holding');
+  const [outcome, setOutcome] = useState<TradeOutcome>(initial?.outcome ?? (direction === 'buy' ? 'holding' : 'profit'));
   const [checklist, setChecklist] = useState(initial?.checklist_passed ?? false);
   const [saving, setSaving] = useState(false);
+
+  // Buy일 때는 outcome을 holding으로 강제 설정
+  const finalOutcome = direction === 'buy' ? 'holding' : outcome;
 
   const qty = parseOptionalNumber(quantity);
   const px = parseOptionalNumber(price);
@@ -58,12 +63,14 @@ export function TradeForm({
         direction,
         quantity: qty,
         price: px,
+        currency,
+        fee: parseOptionalNumber(fee),
         reason: reason.trim(),
         emotion_tag: emotion,
         target_price: parseOptionalNumber(target),
         stop_loss: parseOptionalNumber(stop),
         checklist_passed: checklist,
-        outcome,
+        outcome: finalOutcome,
         traded_at: tradedAt.toISOString(),
       });
     } finally {
@@ -118,6 +125,24 @@ export function TradeForm({
             placeholder="150"
             value={price}
             onChangeText={setPrice}
+            keyboardType="decimal-pad"
+            containerStyle={styles.col}
+          />
+        </View>
+        <View style={styles.row}>
+          <TextField
+            label="Currency"
+            placeholder="USD"
+            value={currency}
+            onChangeText={setCurrency}
+            autoCapitalize="characters"
+            containerStyle={styles.col}
+          />
+          <TextField
+            label="Fee (Optional)"
+            placeholder="0"
+            value={fee}
+            onChangeText={setFee}
             keyboardType="decimal-pad"
             containerStyle={styles.col}
           />
@@ -178,10 +203,12 @@ export function TradeForm({
             containerStyle={styles.col}
           />
         </View>
-        <View>
-          <FieldLabel>Outcome</FieldLabel>
-          <Segmented options={outcomeOptions} value={outcome} onChange={setOutcome} />
-        </View>
+        {direction === 'sell' ? (
+          <View>
+            <FieldLabel>Outcome</FieldLabel>
+            <Segmented options={outcomeOptions.filter(o => o.value !== 'holding')} value={outcome} onChange={setOutcome} />
+          </View>
+        ) : null}
         <SwitchRow
           title="Principle checklist confirmed"
           subtitle="I checked this trade against my principles"
