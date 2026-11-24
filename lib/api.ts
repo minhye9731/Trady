@@ -1,9 +1,22 @@
 import axios from 'axios';
+import Constants from 'expo-constants';
 import { useAuthStore } from '../store/auth';
 
-// The deployed API works on both the simulator and a physical iPhone.
-// For a local backend, set EXPO_PUBLIC_API_URL in .env (use your Mac's LAN IP on a device).
-const baseURL = process.env.EXPO_PUBLIC_API_URL || 'https://trady-api.onrender.com';
+// Determine API URL based on environment
+let baseURL = 'https://trady-api.onrender.com';
+
+if (__DEV__) {
+  // Development: auto-detect Mac IP from Expo hostUri
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    // hostUri format: "192.168.1.100:19000" or "192.168.1.100"
+    const ip = hostUri.split(':')[0];
+    baseURL = `http://${ip}:8000`;
+  }
+} else {
+  // Production: use Render backend URL
+  baseURL = process.env.EXPO_PUBLIC_API_URL || 'https://trady-api.onrender.com';
+}
 
 export const api = axios.create({
   baseURL,
